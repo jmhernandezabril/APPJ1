@@ -1,4 +1,4 @@
-import os  # Agrega esta línea
+import os  
 import pymysql
 from flask import Flask, render_template
 import smtplib
@@ -72,22 +72,29 @@ def send_email(data):
     smtp_user = "sistemas@tabisam.es"
     smtp_password = "J1rm3t5$$"
 
-    # Construir el contenido dinámico
-    content = "<h1>Notificación de vehículos</h1><ul>"
-    for row in data:
-        content += f"<li>Vehículo: {row[0]}, Marca: {row[3]}, Próxima ITV: {row[5]}</li>"
-    content += "</ul>"
-
-    # Renderizar la plantilla HTML con el contenido
+    # Generar contenido dinámico desde la plantilla
+    content = "".join([f"<li>Vehículo: {row[0]}, Marca: {row[3]}, Próxima ITV: {row[5]}</li>" for row in data])
     html_content = render_template("email_template.html", content=content)
 
-    # Configurar el mensaje
-    msg = MIMEMultipart()
-    msg["From"] = "sistemas@tabisam.es"  # Cambiar al remitente autorizado
-    msg["To"] = "josemaria.hernandez@tabisam.es"  # Cambia al destinatario real
+    # Configurar el mensaje de correo
+    msg = MIMEMultipart("related")
+    msg["From"] = "josemaria.hernandez@tabisam.es"
+    msg["To"] = "josemaria.hernandez@tabisam.es"
     msg["Subject"] = "Notificación de Inspección Técnica de Vehículos"
-    msg.attach(MIMEText(html_content, "html"))
 
+    # Adjuntar la parte HTML
+    msg_alternative = MIMEMultipart("alternative")
+    msg.attach(msg_alternative)
+    msg_alternative.attach(MIMEText(html_content, "html"))
+
+    # Adjuntar la imagen embebida
+    with open("static/image001.png", "rb") as img_file:
+        mime_image = MIMEImage(img_file.read())
+        mime_image.add_header("Content-ID", "<logo_tabisam>")
+        mime_image.add_header("Content-Disposition", "inline", filename="image001.png")
+        msg.attach(mime_image)
+
+    # Enviar el correo
     try:
         with smtplib.SMTP(smtp_server, smtp_port) as server:
             server.starttls()
@@ -96,8 +103,6 @@ def send_email(data):
             print("Correo enviado correctamente.")
     except Exception as e:
         print(f"Error al enviar el correo: {e}")
-
-
 
 
 # Ruta para enviar correo de prueba
