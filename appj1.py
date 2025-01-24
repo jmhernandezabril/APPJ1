@@ -5,6 +5,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from db_config import DB_CONFIG
+from email.mime.image import MIMEImage
 
 
 app = Flask(__name__)
