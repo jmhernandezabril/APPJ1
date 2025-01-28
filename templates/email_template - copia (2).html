@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Correo de notificación</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ccc;
+        }
+        th {
+            background-color: #f4f4f4;
+            padding: 10px;
+        }
+        td {
+            padding: 10px;
+        }
+        .footer {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: transparent;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .footer img {
+            width: 200px;
+            margin-bottom: 10px;
+        }
+        .footer a {
+            font-size: 300%; /* Tamaño de fuente 300% mayor */
+            color: blue; /* Color azul */
+            text-decoration: none; /* Quitar subrayado */
+        }
+    </style>
+</head>
+<body>
+    {{ content }}
+
+    <div class="footer">
+        <!-- Cambiado para usar la imagen embebida con Content-ID -->
+        <img src="cid:logo_tabisam" alt="Tabisam Logo">
+        <a href="https://www.tabisam.com">www.tabisam.com</a>
+    </div>
+    <p>
+        <strong>PROTECCIÓN DE DATOS:</strong> Los datos personales que forman parte de este correo electrónico son tratados por TABISAM, S.L.U. con la finalidad de mantenimiento de contactos...
+        <br>
+        <strong>DATA PROTECTION:</strong> Personal data which form part of this email are treated by TABISAM, S.L.U., with the aim of maintaining contacts...
+    </p>
+</body>
+</html>

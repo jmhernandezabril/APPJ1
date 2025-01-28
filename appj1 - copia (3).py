@@ -20,19 +20,16 @@ app = Flask(__name__)
 last_run_time = None
 scheduler_running = False
 scheduler_lock = threading.Lock()
-recordatorios_activados = False
 
 
 # Función para cargar la configuración desde un JSON
 def load_email_config(config_file="config.json"):
     try:
-        with open(config_file, "r", encoding="utf-8") as file:
-            data = file.read()
-            return json.loads(data)
+        with open(config_file, "r") as file:
+            return json.load(file)
     except Exception as e:
-        print(f"❌ Error al cargar el archivo de configuración: {e}")
+        print(f"Error al cargar el archivo de configuración: {e}")
         return {"cc": [], "cco": [], "send_time": "08:00", "repeat_interval": 0}
-
 
 # Función para obtener datos de la base de datos
 def get_data_from_db():
@@ -138,7 +135,6 @@ def send_email(data):
 # ENVIO PLANIFICADO
 def scheduled_task():
     global last_run_time
-    global recordatorios_activados
 
     now = datetime.now().strftime("%d/%m/%Y_%H:%M:%S.%f")[:-3]  # Formato con milisegundos
     print(f"📌 Comprobando ejecución de la tarea a las {now}...")
@@ -156,55 +152,35 @@ def scheduled_task():
 
         print(f"✅ Ejecutando tarea a las {now}")
 
-        # 🔹 Ejecutamos dentro del contexto de Flask
-        with app.app_context():
-            data = get_data_from_db()
-            if data:
-                print("✉️ Enviando Correos...")
+        # Obtener datos y enviar correo si es necesario
+        data = get_data_from_db()
+        if data:
+            print("✉️ Enviando Correos...")
+            with app.app_context():  # 🔹 Asegurar contexto de Flask
                 send_email(data)
-
-                if not recordatorios_activados:
-                    print("🔔 Activando recordatorios...")
-                    activar_recordatorios()
-                    recordatorios_activados = True
-            else:
-                print("⚠️ No se obtuvieron datos para enviar el correo.")
-
-def activar_recordatorios():
-    """Función para configurar los recordatorios cada cierto intervalo."""
-    email_config = load_email_config()
-    repeat_interval = email_config.get("repeat_interval", 0)
-
-    if repeat_interval > 0:
-        print(f"🔄 Programando recordatorios cada {repeat_interval} minutos...")
-        schedule.every(repeat_interval).minutes.do(scheduled_task)
-    else:
-        print(f"⚠️ Intervalo de recordatorios no configurado o inválido. Valor {repeat_interval}")
-
+        else:
+            print("⚠️ No se obtuvieron datos para enviar el correo.")
 
 def configure_schedule():
+    """Configura las tareas programadas"""
     global last_run_time
     email_config = load_email_config()
     send_time = email_config.get("send_time", "").strip()
-    repeat_interval = str(email_config.get("repeat_interval", "")).strip()  # Convertimos a string antes de usar strip()
-    
-    print(f"Tareas activas en schedule.jobs ANTES de programar: {len(schedule.jobs)}")
+    repeat_interval = email_config.get("repeat_interval", 0)
+
+    print(f"📋 Tareas activas en schedule.jobs ANTES de programar: {len(schedule.jobs)}")
 
     schedule.clear()  # Asegurar que no haya tareas duplicadas
 
-    print(f"🕒 Programando tarea principal para la hora exacta {send_time}...")
-    schedule.every().day.at(send_time).do(scheduled_task)
+    if send_time:
+        print(f"🕒 Programando tarea para la hora exacta {send_time}...")
+        schedule.every().day.at(send_time).do(scheduled_task)
 
-    # Validar si repeat_interval es un número y mayor que 0
-    if repeat_interval.isdigit() and int(repeat_interval) > 0:
-        repeat_interval = int(repeat_interval)
-        print(f"🔄 Programando recordatorios cada {repeat_interval} minutos...")
+    if repeat_interval > 0:
+        print(f"🔄 Programando tarea repetitiva cada {repeat_interval} minutos...")
         schedule.every(repeat_interval).minutes.do(scheduled_task)
-    else:
-        print(f"⚠️ Intervalo de repetición no definido o inválido, se omitirá. Valor {repeat_interval}")
 
-    print(f"Tareas activas en schedule.jobs DESPUÉS de programar: {len(schedule.jobs)}")
-
+    print(f"📋 Tareas activas en schedule.jobs DESPUÉS de programar: {len(schedule.jobs)}")
 
 
 def run_scheduler():

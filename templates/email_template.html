@@ -15,40 +15,62 @@
             border-collapse: collapse;
             margin-top: 20px;
         }
-        table, th, td {
-            border: 1px solid #ccc;
-        }
-        th {
-            background-color: #f4f4f4;
-            padding: 10px;
-        }
-        td {
-            padding: 10px;
-        }
-        .footer {
+        .footer-table {
+            width: 100%;
             margin-top: 20px;
-            padding: 10px;
-            background-color: #f4f4f4;
-            text-align: center;
-            font-size: 12px;
+            border: none; /* Sin bordes */
         }
-        .footer img {
-            width: 200px;
-            margin-bottom: 10px;
+        .footer-table td {
+            vertical-align: middle;
+            border: none; /* Sin bordes */
+        }
+        .footer-logo {
+            text-align: left;
+        }
+        .footer-link {
+            text-align: right;
+            font-size: 200%;
+            color: blue;
+            text-decoration: underline;
+        }
+        .footer-text {
+            font-size: 12px;
+            margin-top: 20px;
+            text-align: left;
+        }
+        .footer-logo img {
+            width: 300px; /* Incrementar tamaño de la imagen */
         }
     </style>
 </head>
 <body>
-    {{ content }}
+    <p>Hola <strong>{{ conductor.first_name }}</strong>,</p>
+    <p>
+        El próximo día <strong>{{ vehiculo.fecha_prxima_i_t_v }}</strong> vence el plazo para pasar la ITV del vehículo con matrícula <strong>{{ vehiculo.name }}</strong>. 
+        Le rogamos tome las medidas necesarias para llevar a cabo la inspección dentro de la fecha indicada.
+    </p>
+    <br>
+    <p style="font-style: italic; font-weight: bold;"> Muchas gracias por su colaboración,</p>
+    <p>Dpto. Mantenimiento Flota de Vehículos<br>Tlf. 96 670 11 76</p>
 
-    <div class="footer">
-        <img src="{{ url_for('static', filename='image001.png') }}" alt="Tabisam Logo">
+    <table class="footer-table">
+        <tr>
+            <td class="footer-logo">
+                <img src="cid:logo_tabisam" alt="Tabisam Logo">
+            </td>
+            <td class="footer-link">
+                <a href="https://www.tabisam.com">www.tabisam.com</a>
+            </td>
+        </tr>
+    </table>
+    <div class="footer-text">
         <p>
-            <strong>PROTECCIÓN DE DATOS:</strong> Los datos personales que forman parte de este correo electrónico son tratados por TABISAM, S.L.U. con la finalidad de mantenimiento de contactos...
+            <strong>PROTECCIÓN DE DATOS:</strong> Los datos personales que forman parte de este correo electrónico son tratados por TABISAM, S.L., con la finalidad de mantenimiento de contactos. Los datos se han obtenido con su consentimiento o como consecuencia de una relación jurídica previa. Puede usted ejercitar sus derechos así como obtener más información solicitándolo al remitente de este correo electrónico.  En caso de no ser el destinatario de esta información, por favor, rogamos nos lo comunique en la dirección del remitente para la eliminación de su dirección electrónica, no copiando ni entregando este mensaje a nadie más y procediendo a su destrucción.
             <br>
-            <strong>DATA PROTECTION:</strong> Personal data which form part of this email are treated by TABISAM, S.L.U., with the aim of maintaining contacts...
         </p>
-        <p><a href="https://www.tabisam.com">www.tabisam.com</a></p>
+        <p style="margin-top: 20px; font-style: italic;" >
+            <strong>DATA PROTECTION:</strong> Personal data which form part of this email are treated by TABISAM, S.L., with the aim of maintaining contacts.  Data have been obtained with their consent or as a result of a prior legal relationship. Can you exercise your rights as well as more information by requesting the sender of this email. In case of not being the recipient of this information, please, please contact us on the address of the sender for the removal of your email address, do not copy or deliver this message to anyone more and proceeding to their destruction.
+        </p>
     </div>
 </body>
 </html>
