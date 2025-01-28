@@ -259,6 +259,10 @@ def send_email_route():
         return "Correo enviado correctamente."
     return "No se obtuvieron datos para enviar el correo."
 
+@app.route("/")
+def home():
+    return "APPJ1 está funcionando correctamente."
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
