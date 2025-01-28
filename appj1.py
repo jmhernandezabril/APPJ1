@@ -152,6 +152,10 @@ def scheduled_task():
                 print(f"🚫 Evitando ejecución duplicada en el mismo minuto {now}")
                 return
 
+        # 🔹 Limpiar los recordatorios antes de ejecutar la tarea programada
+        print(f"🔄 Eliminando recordatorios activos antes de la ejecución principal...")
+        schedule.clear()  # Limpia todas las tareas programadas para evitar duplicados
+
         last_run_time = now  # Actualizar última ejecución
 
         print(f"✅ Ejecutando tarea a las {now}")
@@ -163,12 +167,21 @@ def scheduled_task():
                 print("✉️ Enviando Correos...")
                 send_email(data)
 
-                if not recordatorios_activados:
-                    print("🔔 Activando recordatorios...")
+                # 🔔 Reactivar recordatorios SOLO si está configurado
+                email_config = load_email_config()
+                repeat_interval = email_config.get("repeat_interval", 0)
+
+                if repeat_interval > 0:
+                    print("🔔 Activando recordatorios después del envío principal...")
                     activar_recordatorios()
                     recordatorios_activados = True
+                else:
+                    print("⚠️ No hay recordatorios configurados.")
+
             else:
                 print("⚠️ No se obtuvieron datos para enviar el correo.")
+
+
 
 def activar_recordatorios():
     """Función para configurar los recordatorios cada cierto intervalo."""
