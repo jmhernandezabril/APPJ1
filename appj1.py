@@ -270,12 +270,14 @@ if not scheduler_running:
 
 # Flask routes
 @app.route("/send_email")
+@app.route("/send_email")
 def send_email_route():
     data = get_data_from_db()
     if data:
         send_email(data)
-        return "Correo enviado correctamente."
-    return "No se obtuvieron datos para enviar el correo."
+        return "✅ Correo enviado correctamente.", 200
+    return "⚠️ No se obtuvieron datos para enviar el correo.", 400
+
 
 @app.route("/")
 def home():
