@@ -31,7 +31,7 @@ def load_email_config(config_file="config.json"):
             return json.loads(data)
     except Exception as e:
         print(f"❌ Error al cargar el archivo de configuración: {e}")
-        return {"cc": [], "cco": [], "send_time": "08:00", "repeat_interval": 0}
+        return {"cc": [], "cco": [], "send_time": "08:00", "repeat_interval_minutes": 0}
 
 
 # Función para obtener datos de la base de datos
@@ -169,9 +169,9 @@ def scheduled_task():
 
                 # 🔔 Reactivar recordatorios SOLO si está configurado
                 email_config = load_email_config()
-                repeat_interval = email_config.get("repeat_interval", 0)
+                repeat_interval = email_config.get("repeat_interval_minutes", 0)
 
-                if repeat_interval > 0:
+                if repeat_interval_minutes > 0:
                     print("🔔 Activando recordatorios después del envío principal...")
                     activar_recordatorios()
                     recordatorios_activados = True
@@ -186,25 +186,30 @@ def scheduled_task():
 def activar_recordatorios():
     """Función para configurar los recordatorios cada cierto intervalo."""
     email_config = load_email_config()
-    repeat_interval = email_config.get("repeat_interval", 0)
+    repeat_interval_minutes = email_config.get("repeat_interval_minutes", 0)
 
     if repeat_interval > 0:
         print(f"🔄 Programando recordatorios cada {repeat_interval} minutos...")
         schedule.every(repeat_interval).minutes.do(scheduled_task)
     else:
-        print(f"⚠️ Intervalo de recordatorios no configurado o inválido. Valor {repeat_interval}")
+        print(f"⚠️ Intervalo de recordatorios no configurado o inválido. Valor {repeat_interval_minutes}")
 
 
-def configure_schedule():
+def configure_schedule(): 
     global last_run_time
     email_config = load_email_config()
     send_time = email_config.get("send_time", "").strip()
-    repeat_interval = str(email_config.get("repeat_interval", "")).strip()  # Convertimos a string antes de usar strip()
+    repeat_interval_minutes = str(email_config.get("repeat_interval_minutes", "")).strip()  # Convertimos a string antes de usar strip()
     
     print(f"Tareas activas en schedule.jobs ANTES de programar: {len(schedule.jobs)}")
 
     schedule.clear()  # Asegurar que no haya tareas duplicadas
 
+    # Si send_time está en blanco, no programar nada
+    if not send_time:
+        print("⚠️ No se ha definido una hora de envío (send_time), no se programará ninguna tarea.")
+        return
+    
     print(f"🕒 Programando tarea principal para la hora exacta {send_time}...")
     schedule.every().day.at(send_time).do(scheduled_task)
 
@@ -214,7 +219,7 @@ def configure_schedule():
         print(f"🔄 Programando recordatorios cada {repeat_interval} minutos...")
         schedule.every(repeat_interval).minutes.do(scheduled_task)
     else:
-        print(f"⚠️ Intervalo de repetición no definido o inválido, se omitirá. Valor {repeat_interval}")
+        print(f"⚠️ Intervalo de repetición no definido o inválido, se omitirá. Valor {repeat_interval_minutes}")
 
     print(f"Tareas activas en schedule.jobs DESPUÉS de programar: {len(schedule.jobs)}")
 
