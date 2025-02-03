@@ -109,7 +109,7 @@ def send_email(data):
             )
             msg = MIMEMultipart("related")
             msg["From"] = smtp_user
-            msg["To"] = "josemaria.hernandez@tabisam.es"
+            msg["To"] = row[13]
             msg["Subject"] = "Notificación de Inspección Técnica de Vehículos"
             if cc_emails:
                 msg["Cc"] = ", ".join(cc_emails)
