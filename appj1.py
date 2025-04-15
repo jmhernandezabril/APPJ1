@@ -106,15 +106,16 @@ def send_email(data):
     for row in data:
         dias_restantes = row[14]
         if hoy != 6 and (
-           dias_restantes in [31, 25, 20, 15] or
-           dias_restantes < 13 or
-           (ayer == 6 and dias_restantes in [30, 24, 19, 14])
-                        ):
-                html_content = render_template(
+            dias_restantes in [31, 25, 20, 15] or
+            dias_restantes < 13 or
+            (ayer == 6 and dias_restantes in [30, 24, 19, 14])
+        ):
+            html_content = render_template(
                 "email_template.html",
                 conductor={"first_name": row[6]},
                 vehiculo={"name": row[0], "fecha_prxima_i_t_v": row[5]}
             )
+
             msg = MIMEMultipart("related")
             msg["From"] = smtp_user
             msg["To"] = row[13]
