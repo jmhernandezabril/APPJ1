@@ -96,8 +96,8 @@ def get_data_from_db():
 def send_email(data):
     smtp_server = "smtp.office365.com"
     smtp_port = 587
-    smtp_user = "sistemas@tabisam.es"
-    smtp_password = "J1rm3t5$$"
+    smtp_user = "notificaciones@tabisam.es"
+    smtp_password = "Hola!N.T*"
 
     email_config = load_email_config()
     cc_emails = email_config.get("cc", [])
