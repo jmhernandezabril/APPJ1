@@ -1,46 +1,61 @@
+# appj1.py
+# - endpoint /send_email responde 202 inmediato y ejecuta el envio en background
+# - ignora send_time del config.json (solo usa cc y cco)
+# - sin variables de entorno: SMTP_* dentro del codigo
+# - logs simples por stdout para ver en Render
+
 import os
-import pymysql
-from flask import Flask, render_template
+import json
+import time
 import smtplib
+import pymysql
+import threading
+from datetime import datetime, timedelta
+from threading import Thread
+from flask import Flask, jsonify, render_template
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from db_config import DB_CONFIG
 from email.mime.image import MIMEImage
-import json
-import schedule
-import time
-from threading import Thread, Lock
-from datetime import datetime, timedelta
-import threading
 
+from db_config import DB_CONFIG  # debe existir en tu proyecto
 
 app = Flask(__name__)
 
-# Control de día domingo para no enviar mail
-hoy = datetime.now().weekday()
-ayer = (datetime.now() - timedelta(days=1)).weekday()
+# ---------- configuracion SMTP en codigo ----------
+SMTP_SERVER = "smtp.office365.com"
+SMTP_PORT = 587
+SMTP_USER = "notificaciones@tabisam.es"
+SMTP_PASS = "PON_AQUI_TU_PASSWORD_REAL"  # <--- RELLENAR
 
-# Variable para evitar duplicaciones en la ejecución
-last_run_time = None
-scheduler_running = False
-scheduler_lock = threading.Lock()
-recordatorios_activados = False
+# ---------- util de log ----------
+def log(msg: str) -> None:
+    print(f"[APPJ1] {datetime.now().isoformat(timespec='seconds')} | {msg}", flush=True)
 
-
-# Función para cargar la configuración desde un JSON
-def load_email_config(config_file="config.json"):
+# ---------- config de email (solo cc/cco) ----------
+def load_email_config(path: str = "config.json") -> dict:
     try:
-        with open(config_file, "r", encoding="utf-8") as file:
-            data = file.read()
-            return json.loads(data)
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.loads(f.read())
     except Exception as e:
-        print(f"❌ Error al cargar el archivo de configuración: {e}")
-        return {"cc": [], "cco": [], "send_time": "08:00", "repeat_interval_minutes": 0}
+        log(f"error cargando config.json: {e}")
+        data = {}
+    # solo tomamos cc/cco; ignoramos send_time y repeat_interval
+    return {
+        "cc": data.get("cc", []),
+        "cco": data.get("cco", []),
+    }
 
+# ---------- helpers de fecha ----------
+def weekday_today() -> int:
+    # 0=lunes ... 6=domingo
+    return datetime.now().weekday()
 
-# Función para obtener datos de la base de datos
+def weekday_yesterday() -> int:
+    return (datetime.now() - timedelta(days=1)).weekday()
+
+# ---------- DB ----------
 def get_data_from_db():
-    query = """
+    sql = """
     SELECT 
         vehiculo.name,
         vehiculo.description,
@@ -62,10 +77,10 @@ def get_data_from_db():
         ON vehiculo.id = vehiculo_conductor.vehiculo_id
     INNER JOIN comercialcrm.conductor
         ON conductor.id = vehiculo_conductor.conductor_id
-    INNER JOIN comercialcrm.user
-        ON conductor.id = user.conductor_id
+    INNER JOIN comercialcrm.`user`
+        ON conductor.id = `user`.conductor_id
     INNER JOIN comercialcrm.entity_email_address
-        ON user.id = entity_email_address.entity_id 
+        ON `user`.id = entity_email_address.entity_id 
         AND entity_email_address.entity_type = 'User'
     INNER JOIN comercialcrm.email_address
         ON entity_email_address.email_address_id = email_address.id
@@ -74,224 +89,134 @@ def get_data_from_db():
         AND vehiculo.deleted = 0
         AND vehiculo_conductor.deleted = 0
     """
+    conn = None
     try:
-        connection = pymysql.connect(
+        conn = pymysql.connect(
             host=DB_CONFIG["host"],
             user=DB_CONFIG["user"],
             password=DB_CONFIG["password"],
             database=DB_CONFIG["database"],
-            port=DB_CONFIG["port"]
+            port=DB_CONFIG["port"],
+            charset="utf8mb4",
+            cursorclass=pymysql.cursors.Cursor,
+            connect_timeout=10,
+            read_timeout=30,
+            write_timeout=30,
         )
-        with connection.cursor() as cursor:
-            cursor.execute(query)
-            results = cursor.fetchall()
-            return results
+        with conn.cursor() as cur:
+            cur.execute(sql)
+            rows = cur.fetchall()
+            return rows
     except Exception as e:
-        print(f"Error al conectar con la base de datos: {e}")
+        log(f"error DB: {e}")
         return None
     finally:
-        connection.close()
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
-# Función para enviar correos
-def send_email(data):
-    smtp_server = "smtp.office365.com"
-    smtp_port = 587
-    smtp_user = "notificaciones@tabisam.es"
-    smtp_password = "Hola!N.T*"
+# ---------- envio de emails ----------
+def send_email_batch(rows) -> None:
+    cfg = load_email_config()
+    cc_emails = cfg.get("cc", [])
+    cco_emails = cfg.get("cco", [])
 
-    email_config = load_email_config()
-    cc_emails = email_config.get("cc", [])
-    cco_emails = email_config.get("cco", [])
-    
-    for row in data:
-        dias_restantes = row[14]
-        if hoy != 6 and (
-            dias_restantes in [31, 25, 20, 15] or
-            dias_restantes < 13 or
-            (ayer == 6 and dias_restantes in [30, 24, 19, 14])
-        ):
-            html_content = render_template(
+    hoy = weekday_today()
+    ayer = weekday_yesterday()
+
+    enviados = 0
+
+    for row in rows or []:
+        try:
+            # columnas usadas:
+            # row[5] fecha_proxima_itv (string dd/mm/yyyy)
+            # row[6] conductor.first_name
+            # row[13] email destinatario
+            # row[14] dias_restantes (int)
+            dias_restantes = row[14]
+
+            # logica de ventanas de aviso
+            debe_enviar = (
+                hoy != 6 and (
+                    dias_restantes in [31, 25, 20, 15]
+                    or dias_restantes < 13
+                    or (ayer == 6 and dias_restantes in [30, 24, 19, 14])
+                )
+            )
+            if not debe_enviar:
+                continue
+
+            # render del HTML con plantilla Jinja2
+            html = render_template(
                 "email_template.html",
                 conductor={"first_name": row[6]},
-                vehiculo={"name": row[0], "fecha_prxima_i_t_v": row[5]}
+                vehiculo={"name": row[0], "fecha_prxima_i_t_v": row[5]},
             )
 
             msg = MIMEMultipart("related")
-            msg["From"] = smtp_user
+            msg["From"] = SMTP_USER
             msg["To"] = row[13]
-            msg["Subject"] = "Notificación de Inspección Técnica de Vehículos"
+            msg["Subject"] = "Notificacion de Inspeccion Tecnica de Vehiculos"
             if cc_emails:
                 msg["Cc"] = ", ".join(cc_emails)
             if cco_emails:
                 msg["Bcc"] = ", ".join(cco_emails)
 
-            msg_alternative = MIMEMultipart("alternative")
-            msg.attach(msg_alternative)
-            msg_alternative.attach(MIMEText(html_content, "html"))
+            alt = MIMEMultipart("alternative")
+            alt.attach(MIMEText(html, "html"))
+            msg.attach(alt)
 
-            with open("static/image001.png", "rb") as img_file:
-                mime_image = MIMEImage(img_file.read())
-                mime_image.add_header("Content-ID", "<logo_tabisam>")
-                mime_image.add_header("Content-Disposition", "inline", filename="image001.png")
-                msg.attach(mime_image)
-
+            # imagen inline opcional
             try:
-                with smtplib.SMTP(smtp_server, smtp_port) as server:
-                    server.starttls()
-                    server.login(smtp_user, smtp_password)
-                    server.send_message(msg)
-                    print(f"Correo enviado a {row[13]}.")
-            except Exception as e:
-                print(f"Error enviando correo a {row[13]}: {e}")
+                with open("static/image001.png", "rb") as f:
+                    img = MIMEImage(f.read())
+                    img.add_header("Content-ID", "<logo_tabisam>")
+                    img.add_header("Content-Disposition", "inline", filename="image001.png")
+                    msg.attach(img)
+            except Exception as e_img:
+                log(f"no se adjunta imagen inline: {e_img}")
 
-# ENVIO PLANIFICADO
-def scheduled_task():
-    global last_run_time
-    global recordatorios_activados
+            # envio
+            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=60) as s:
+                s.starttls()
+                s.login(SMTP_USER, SMTP_PASS)
+                s.send_message(msg)
 
-    now = datetime.now().strftime("%d/%m/%Y_%H:%M:%S.%f")[:-3]  # Formato con milisegundos
-    print(f"📌 Comprobando ejecución de la tarea a las {now}...")
+            enviados += 1
+            log(f"correo enviado a {row[13]}")
+        except Exception as e:
+            log(f"error enviando a {row[13]}: {e}")
 
-    with threading.Lock():  # 🔒 Bloqueo de concurrencia
-        if last_run_time:
-            last_run_minute = last_run_time[:16]  # Tomamos todo excepto los segundos
-            now_minute = now[:16]
+    log(f"envio finalizado. enviados={enviados}")
 
-            if last_run_minute == now_minute:
-                print(f"🚫 Evitando ejecución duplicada en el mismo minuto {now}")
-                return
-
-        # 🔹 Limpiar los recordatorios antes de ejecutar la tarea programada
-        print(f"🔄 Eliminando recordatorios activos antes de la ejecución principal...")
-        schedule.clear()  # Limpia todas las tareas programadas para evitar duplicados
-
-        last_run_time = now  # Actualizar última ejecución
-
-        print(f"✅ Ejecutando tarea a las {now}")
-
-        # 🔹 Ejecutamos dentro del contexto de Flask
+# ---------- job async ----------
+def job_enviar_async():
+    try:
         with app.app_context():
-            data = get_data_from_db()
-            if data:
-                print("✉️ Enviando Correos...")
-                send_email(data)
+            rows = get_data_from_db()
+            if not rows:
+                log("no hay filas para enviar")
+                return
+            log(f"filas recuperadas: {len(rows)}")
+            send_email_batch(rows)
+    except Exception as e:
+        log(f"job error: {e}")
 
-                # 🔔 Reactivar recordatorios SOLO si está configurado
-                email_config = load_email_config()
-                repeat_interval = email_config.get("repeat_interval_minutes", 0)
-
-                if repeat_interval_minutes > 0:
-                    print("🔔 Activando recordatorios después del envío principal...")
-                    activar_recordatorios()
-                    recordatorios_activados = True
-                else:
-                    print("⚠️ No hay recordatorios configurados.")
-
-            else:
-                print("⚠️ No se obtuvieron datos para enviar el correo.")
-
-
-
-def activar_recordatorios():
-    """Función para configurar los recordatorios cada cierto intervalo."""
-    email_config = load_email_config()
-    repeat_interval_minutes = email_config.get("repeat_interval_minutes", 0)
-
-    if repeat_interval > 0:
-        print(f"🔄 Programando recordatorios cada {repeat_interval} minutos...")
-        schedule.every(repeat_interval).minutes.do(scheduled_task)
-    else:
-        print(f"⚠️ Intervalo de recordatorios no configurado o inválido. Valor {repeat_interval_minutes}")
-
-
-def configure_schedule(): 
-    global last_run_time
-    email_config = load_email_config()
-    send_time = email_config.get("send_time", "").strip()
-    repeat_interval_minutes = str(email_config.get("repeat_interval_minutes", "")).strip()  # Convertimos a string antes de usar strip()
-    
-    print(f"Tareas activas en schedule.jobs ANTES de programar: {len(schedule.jobs)}")
-
-    schedule.clear()  # Asegurar que no haya tareas duplicadas
-
-    # Si send_time está en blanco, no programar nada
-    if not send_time:
-        print("⚠️ No se ha definido una hora de envío (send_time), no se programará ninguna tarea.")
-        return
-    
-    print(f"🕒 Programando tarea principal para la hora exacta {send_time}...")
-    schedule.every().day.at(send_time).do(scheduled_task)
-
-    # Validar si repeat_interval es un número y mayor que 0
-    if repeat_interval.isdigit() and int(repeat_interval) > 0:
-        repeat_interval = int(repeat_interval)
-        print(f"🔄 Programando recordatorios cada {repeat_interval} minutos...")
-        schedule.every(repeat_interval).minutes.do(scheduled_task)
-    else:
-        print(f"⚠️ Intervalo de repetición no definido o inválido, se omitirá. Valor {repeat_interval_minutes}")
-
-    print(f"Tareas activas en schedule.jobs DESPUÉS de programar: {len(schedule.jobs)}")
-
-
-
-def run_scheduler():
-    """Ejecuta el loop del scheduler en un hilo separado"""
-    global scheduler_running
-
-    print("🔄 Iniciando loop del scheduler...")
-
-    with scheduler_lock:
-        if scheduler_running:
-            print("⚠️ Scheduler ya estaba en ejecución. No se iniciará otro hilo.")
-            return  
-
-        scheduler_running = True  # ✅ Marcamos que el scheduler está corriendo
-
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
-
-
-# 🔹 Nueva función para evitar reinicios dobles por Flask
-def start_scheduler():
-    """Inicia el scheduler solo si Flask no está en modo recarga"""
-    global scheduler_running
-
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true":  # Solo ejecuta si Flask no está recargando
-        print("⚠️ Flask se está recargando. No iniciaré otro scheduler.")
-        return
-
-    with scheduler_lock:
-        if scheduler_running:
-            print("⚠️ El scheduler ya estaba en ejecución. No se iniciará otro.")
-            return  
-
-        scheduler_thread = threading.Thread(target=run_scheduler, name="SchedulerThread", daemon=True)
-        scheduler_thread.start()
-        print("✅ Scheduler iniciado correctamente.")
-
-
-# 🚀 **Iniciar el scheduler solo si no está en ejecución**
-if not scheduler_running:
-    configure_schedule()  # Asegura que las tareas están programadas antes de iniciar
-    start_scheduler()
-
-
-# Flask routes
-@app.route("/send_email")
-@app.route("/send_email")
-def send_email_route():
-    data = get_data_from_db()
-    if data:
-        send_email(data)
-        return "✅ Correo enviado correctamente.", 200
-    return "⚠️ No se obtuvieron datos para enviar el correo.", 400
-
-
+# ---------- rutas ----------
 @app.route("/")
 def home():
-    return "APPJ1 está funcionando correctamente."
+    return "APPJ1 ok"
 
+@app.route("/send_email", methods=["GET"])
+def send_email_route():
+    # devuelve 202 aceptado y lanza envio en background
+    Thread(target=job_enviar_async, name="job_enviar_async_http", daemon=True).start()
+    return jsonify({"status": "accepted"}), 202
+
+# ---------- arranque ----------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
+    # debug=False para evitar doble arranque del reloader
     app.run(host="0.0.0.0", port=port, debug=False)
