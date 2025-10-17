@@ -25,7 +25,7 @@ app = Flask(__name__)
 SMTP_SERVER = "smtp.office365.com"
 SMTP_PORT = 587
 SMTP_USER = "notificaciones@tabisam.es"
-SMTP_PASS = "PON_AQUI_TU_PASSWORD_REAL"  # <--- RELLENAR
+smtp_password = "Hola!N.T*"
 
 # ---------- util de log ----------
 def log(msg: str) -> None:
